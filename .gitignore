@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+venv/
+*.db
+
+# Environment
+.env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Flutter
+frontend/childcare_talk/.dart_tool/
+frontend/childcare_talk/build/
+frontend/childcare_talk/.flutter-plugins
+frontend/childcare_talk/.flutter-plugins-dependencies
+frontend/childcare_talk/.packages
+
+# OS
+.DS_Store
+Thumbs.db
