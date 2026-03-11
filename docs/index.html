@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>육아톡 🍼 - AI 육아 상담</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍼</text></svg>">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 로그인 화면 -->
+    <div id="login-screen" class="screen active">
+      <div class="login-container">
+        <div class="login-logo">🍼</div>
+        <h1 class="login-title">육아톡</h1>
+        <p class="login-subtitle">친구같은 육아 상담사</p>
+        <div class="login-form">
+          <input type="text" id="nickname-input" placeholder="닉네임" autocomplete="username">
+          <input type="password" id="password-input" placeholder="비밀번호" autocomplete="current-password">
+          <div id="login-error" class="error-message" style="display:none"></div>
+          <button id="login-btn" class="btn-primary" onclick="handleAuth(false)">로그인</button>
+          <button id="register-btn" class="btn-text" onclick="handleAuth(true)">처음이에요? 회원가입</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 대화 목록 화면 -->
+    <div id="list-screen" class="screen">
+      <div class="header">
+        <h2>육아톡 🍼</h2>
+        <button class="btn-icon" onclick="logout()" title="로그아웃">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        </button>
+      </div>
+      <div id="conversation-list" class="conversation-list"></div>
+      <button class="fab" onclick="createConversation()">+</button>
+    </div>
+
+    <!-- 채팅 화면 -->
+    <div id="chat-screen" class="screen">
+      <div class="header">
+        <button class="btn-icon" onclick="showList()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <h2 id="chat-title">새 대화</h2>
+        <div style="width:36px"></div>
+      </div>
+      <div id="messages-container" class="messages-container">
+        <div id="empty-chat" class="empty-chat">
+          <div style="font-size:48px">🍼</div>
+          <p>안녕! 육아톡이야 😊<br>무슨 이야기든 편하게 해줘!</p>
+        </div>
+      </div>
+      <div class="input-container">
+        <textarea id="message-input" placeholder="메시지를 입력하세요..." rows="1" onkeydown="handleKeyDown(event)"></textarea>
+        <button id="send-btn" class="btn-send" onclick="sendMessage()">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+        </button>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
