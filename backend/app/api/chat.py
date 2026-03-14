@@ -53,10 +53,14 @@ async def send_message(
 
     async def event_stream():
         full_response = []
+        sources = []
         try:
-            async for chunk in get_ai_response(messages):
-                full_response.append(chunk)
-                yield f"data: {json.dumps({'type': 'chunk', 'content': chunk}, ensure_ascii=False)}\n\n"
+            async for event_type, data in get_ai_response(messages):
+                if event_type == "chunk":
+                    full_response.append(data)
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': data}, ensure_ascii=False)}\n\n"
+                elif event_type == "sources":
+                    sources = data
 
             # 전체 응답 저장
             assistant_content = "".join(full_response)
@@ -65,6 +69,10 @@ async def send_message(
             # 대화 업데이트 시간 갱신
             conversation.updated_at = datetime.now(timezone.utc)
             await db.commit()
+
+            # grounding sources 전송
+            if sources:
+                yield f"data: {json.dumps({'type': 'sources', 'sources': sources}, ensure_ascii=False)}\n\n"
 
             yield f"data: {json.dumps({'type': 'done', 'content': assistant_content}, ensure_ascii=False)}\n\n"
         except Exception as e:
@@ -95,8 +103,9 @@ async def send_message_sync(
     messages = await get_conversation_messages(db, conversation_id)
 
     full_response = []
-    async for chunk in get_ai_response(messages, stream=False):
-        full_response.append(chunk)
+    async for event_type, data in get_ai_response(messages, stream=False):
+        if event_type == "chunk":
+            full_response.append(data)
 
     assistant_content = "".join(full_response)
     message = await save_message(db, conversation_id, "assistant", assistant_content)

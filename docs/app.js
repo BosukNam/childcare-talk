@@ -4,6 +4,7 @@ const API_BASE = localStorage.getItem('api_url') || 'http://localhost:8000/api';
 
 let token = localStorage.getItem('access_token');
 let currentConversationId = null;
+let currentNickname = localStorage.getItem('nickname') || '';
 
 // ========== 화면 전환 ==========
 function showScreen(id) {
@@ -35,6 +36,8 @@ async function handleAuth(isRegister) {
       const data = await res.json();
       token = data.access_token;
       localStorage.setItem('access_token', token);
+      currentNickname = nickname;
+      localStorage.setItem('nickname', nickname);
       errorEl.style.display = 'none';
       loadConversations();
     } else {
@@ -50,7 +53,9 @@ async function handleAuth(isRegister) {
 
 function logout() {
   token = null;
+  currentNickname = '';
   localStorage.removeItem('access_token');
+  localStorage.removeItem('nickname');
   showScreen('login-screen');
 }
 
@@ -172,13 +177,21 @@ function appendMessage(role, content) {
   div.className = `message ${role}`;
 
   if (role === 'assistant') {
+    const renderedContent = content ? renderMarkdown(content) : '';
     div.innerHTML = `
-      <div class="bubble">
-        <div class="bot-label">육아톡 🍼</div>
-        <div class="bubble-content">${escapeHtml(content)}</div>
+      <div class="message-wrapper">
+        <div class="msg-label bot-label">육아톡 🍼</div>
+        <div class="bubble">
+          <div class="bubble-content markdown-body">${renderedContent}</div>
+        </div>
       </div>`;
   } else {
-    div.innerHTML = `<div class="bubble">${escapeHtml(content)}</div>`;
+    const displayName = currentNickname || '나';
+    div.innerHTML = `
+      <div class="message-wrapper">
+        <div class="msg-label user-label">${escapeHtml(displayName)}</div>
+        <div class="bubble">${escapeHtml(content)}</div>
+      </div>`;
   }
 
   container.appendChild(div);
@@ -194,9 +207,11 @@ function appendTypingIndicator() {
   div.className = 'message assistant';
   div.id = 'typing-message';
   div.innerHTML = `
-    <div class="bubble">
-      <div class="bot-label">육아톡 🍼</div>
-      <div class="bubble-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>
+    <div class="message-wrapper">
+      <div class="msg-label bot-label">육아톡 🍼</div>
+      <div class="bubble">
+        <div class="bubble-content"><div class="typing-dots"><span></span><span></span><span></span></div></div>
+      </div>
     </div>`;
   container.appendChild(div);
   scrollToBottom();
@@ -229,7 +244,9 @@ async function sendMessage() {
 
     const botDiv = appendMessage('assistant', '');
     const bubbleContent = botDiv.querySelector('.bubble-content');
+    const bubble = botDiv.querySelector('.bubble');
     let fullText = '';
+    let groundingSources = [];
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -249,9 +266,33 @@ async function sendMessage() {
             const data = JSON.parse(line.substring(6));
             if (data.type === 'chunk') {
               fullText += data.content;
-              bubbleContent.textContent = fullText;
+              bubbleContent.textContent = fullText.trim();
               scrollToBottom();
+            } else if (data.type === 'sources') {
+              groundingSources = data.sources || [];
             } else if (data.type === 'done') {
+              // 스트리밍 완료 후 마크다운 렌더링 + 소스 링크 주입
+              let text = fullText;
+              let referencesHtml = '';
+
+              if (groundingSources.length > 0) {
+                const result = extractAndBuildReferences(text, groundingSources);
+                text = result.body;
+                referencesHtml = result.referencesHtml;
+              }
+
+              let rendered = renderMarkdown(text);
+
+              if (groundingSources.length > 0) {
+                rendered = injectFootnoteLinks(rendered, groundingSources);
+              }
+
+              if (referencesHtml) {
+                rendered += referencesHtml;
+              }
+
+              bubbleContent.innerHTML = rendered;
+              scrollToBottom();
               // Update title if it was auto-generated
               try {
                 const convRes = await fetch(API_BASE + '/conversations', {
@@ -284,6 +325,68 @@ function handleKeyDown(e) {
   }
 }
 
+// ========== 레퍼런스 링크 주입 ==========
+function extractAndBuildReferences(fullText, sources) {
+  // raw markdown에서 참고문헌 섹션을 추출하고 grounding URL과 결합
+  const refPattern = /\*{0,2}📚?\s*참고\s*문헌\s*:?\*{0,2}\s*\n([\s\S]*?)$/;
+  const match = fullText.match(refPattern);
+
+  if (!match) {
+    // 모델이 참고문헌을 생성하지 않은 경우 → grounding 소스로 자동 생성
+    return {
+      body: fullText,
+      referencesHtml: buildReferencesHtml(sources.map(s => s.title), sources),
+    };
+  }
+
+  const body = fullText.substring(0, match.index).trimEnd();
+  const refContent = match[1].trim();
+  const refLines = refContent.split('\n').filter(l => l.trim());
+
+  // 각 줄에서 마커([1], 1., - 등) 제거 후 제목만 추출
+  const titles = refLines
+    .map(line => line.replace(/^\s*[-*]?\s*\[?\d+\]?\.?\s*/, '').trim())
+    .filter(t => t);
+
+  return {
+    body,
+    referencesHtml: buildReferencesHtml(titles, sources),
+  };
+}
+
+function buildReferencesHtml(titles, sources) {
+  const count = Math.min(Math.max(titles.length, sources.length), 5);
+  const items = [];
+
+  for (let i = 0; i < count; i++) {
+    const title = titles[i] || sources[i]?.title || `참고 자료 ${i + 1}`;
+    const url = sources[i]?.url;
+    if (url) {
+      items.push(`<li><a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(title)}</a></li>`);
+    } else {
+      items.push(`<li>${escapeHtml(title)}</li>`);
+    }
+  }
+
+  return `
+    <div class="references-section">
+      <strong>📚 참고 문헌</strong>
+      <ol>${items.join('')}</ol>
+    </div>`;
+}
+
+function injectFootnoteLinks(html, sources) {
+  // 본문 내 [n] 각주를 클릭 가능한 링크로 변환
+  sources.forEach((source, i) => {
+    const num = i + 1;
+    html = html.replace(
+      new RegExp(`\\[${num}\\]`, 'g'),
+      `<a href="${escapeHtml(source.url)}" class="footnote-link" target="_blank" rel="noopener noreferrer">[${num}]</a>`
+    );
+  });
+  return html;
+}
+
 // ========== 유틸 ==========
 function scrollToBottom() {
   const container = document.getElementById('messages-container');
@@ -296,6 +399,17 @@ function escapeHtml(text) {
   const div = document.createElement('div');
   div.textContent = text;
   return div.innerHTML;
+}
+
+function renderMarkdown(text) {
+  // marked.js 링크를 새 탭으로 열기
+  const renderer = new marked.Renderer();
+  renderer.link = function({ href, title, tokens }) {
+    const linkText = tokens ? tokens.map(t => t.text || t.raw || '').join('') : href;
+    const titleAttr = title ? ` title="${title}"` : '';
+    return `<a href="${href}"${titleAttr} target="_blank" rel="noopener noreferrer">${linkText}</a>`;
+  };
+  return marked.parse(text.trim(), { breaks: true, renderer });
 }
 
 function formatTime(isoStr) {
@@ -332,6 +446,9 @@ document.addEventListener('DOMContentLoaded', () => {
         headers: authHeaders(),
       });
       if (res.ok) {
+        const user = await res.json();
+        currentNickname = user.nickname;
+        localStorage.setItem('nickname', user.nickname);
         loadConversations();
         return;
       }
